@@ -8,6 +8,7 @@ from typing import List
 from groq import Groq
 import json
 import sys
+from fastapi import APIRouter
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from shared.schemas import SynthesisRequest, SynthesisOut, Evidence, Driver
@@ -174,7 +175,7 @@ Generate the JSON response:"""
 _engine = None
 
 def get_synthesis_engine() -> SynthesisEngine:
-    """ Returns singleton SynthesisEngine instance."""
+    """Returns singleton SynthesisEngine instance."""
     global _engine
     if _engine is None:
         _engine = SynthesisEngine()
@@ -183,8 +184,17 @@ def get_synthesis_engine() -> SynthesisEngine:
 
 def synthesize_answer(request: SynthesisRequest) -> SynthesisOut:
     """
-    Synthesizes an answer from evidence using LLM.
-    Called by Person A's FastAPI endpoint.
+    Synthesizes answer from evidence using LLM.
+    Called by FastAPI endpoint.
     """
     engine = get_synthesis_engine()
-    return engine.synthesize(request)#Your Code
+    return engine.synthesize(request)
+
+
+# FastAPI Router for Person A to import
+router = APIRouter(prefix="/synth", tags=["synthesis"])
+
+@router.post("/stub", response_model=SynthesisOut)
+def synthesize_endpoint(req: SynthesisRequest) -> SynthesisOut:
+    """Endpoint for synthesizing answers from evidence."""
+    return synthesize_answer(req)
