@@ -1,4 +1,41 @@
 period,region,revenue,rev_delta_pct
-2025-Q2,Europe,1200000,-18
-2025-Q2,North America,2100000,-3
-2025-Q2,APAC,900000,4
+2024-Q1,North America,2100000,0
+2024-Q1,Europe,1250000,0
+2024-Q1,APAC,950000,0
+2024-Q1,Latin America,350000,0
+2024-Q1,Middle East & Africa,350000,0
+2024-Q2,North America,2150000,2.4
+2024-Q2,Europe,1270000,1.6
+2024-Q2,APAC,970000,2.1
+2024-Q2,Latin America,355000,1.4
+2024-Q2,Middle East & Africa,360000,2.8
+2024-Q3,North America,2050000,-4.6
+2024-Q3,Europe,1210000,-4.7
+2024-Q3,APAC,940000,-3.1
+2024-Q3,Latin America,340000,-4.2
+2024-Q3,Middle East & Africa,350000,-2.8
+2024-Q4,North America,2250000,9.8
+2024-Q4,Europe,1300000,7.4
+2024-Q4,APAC,980000,4.3
+2024-Q4,Latin America,360000,2.9
+2024-Q4,Middle East & Africa,370000,5.7
+2025-Q1,North America,2180000,-3.1
+2025-Q1,Europe,1280000,-1.5
+2025-Q1,APAC,950000,-3.1
+2025-Q1,Latin America,355000,-1.4
+2025-Q1,Middle East & Africa,365000,-1.4
+2025-Q2,North America,2120000,-2.8
+2025-Q2,Europe,1260000,-1.6
+2025-Q2,APAC,940000,-1.1
+2025-Q2,Latin America,350000,-1.4
+2025-Q2,Middle East & Africa,360000,-1.4
+2025-Q3,North America,2200000,3.8
+2025-Q3,Europe,1320000,4.8
+2025-Q3,APAC,970000,3.2
+2025-Q3,Latin America,370000,5.7
+2025-Q3,Middle East & Africa,370000,2.8
+2025-Q4,North America,2400000,6.7
+2025-Q4,Europe,1500000,7.1
+2025-Q4,APAC,1150000,6.5
+2025-Q4,Latin America,400000,5.3
+2025-Q4,Middle East & Africa,350000,0.0
