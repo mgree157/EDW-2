@@ -18,7 +18,14 @@ class SynthesisEngine:
     """Handles LLM-based synthesis of evidence into root cause analysis."""
     
     def __init__(self, api_key: str = None):
-        self.api_key = api_key or os.getenv("GROQ_API_KEY")
+        if api_key:
+            self.api_key = api_key
+        else:
+            try:
+                from google.colab import userdata
+                self.api_key = userdata.get('GROQ_API_KEY')
+            except:
+                self.api_key = os.getenv("GROQ_API_KEY")
         if not self.api_key:
             raise ValueError("GROQ_API_KEY not found in environment")
         
