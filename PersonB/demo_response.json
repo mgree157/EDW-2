@@ -1,0 +1,30 @@
+{
+  "final_answer": "Q2 revenue decreased by 6% primarily due to lower North American sales and two underperforming products.",
+  "confidence": 0.82,
+  "sub_questions": [
+    "How did revenue change by region?",
+    "Which products underperformed last quarter?"
+  ],
+  "evidence": [
+    {"evidence_id": "rev_qoq:2024Q2", "metric": "revenue_qoq_delta", "value": -0.06, "region": "North America", "source": "revenue_qoq.csv"},
+    {"evidence_id": "orders_qoq:2024Q2", "metric": "orders_qoq_delta", "value": -0.04, "source": "orders_qoq.csv"}
+  ],
+  "findings": [
+    {"title": "QoQ Decline", "summary": "Overall revenue down 6% vs Q1"},
+    {"title": "Regional Impact", "summary": "North America led the drop with a 9% decline"}
+  ],
+  "timings": {
+    "route": 0.03,
+    "fetch": 0.20,
+    "normalize": 0.05,
+    "synthesize": 1.00,
+    "total": 1.28
+  },
+  "trace": {
+    "decomposition": ["Compare Q1 vs Q2 revenue", "Break down by region", "Identify low-performing products"],
+    "adapter_calls": [{"dataset": "revenue_qoq.csv"}, {"dataset": "orders_qoq.csv"}],
+    "normalized": [{"metric": "revenue_qoq_delta", "value": -0.06}],
+    "llm_prompt": "...mock prompt...",
+    "llm_output_raw": "...mock response..."
+  }
+}
