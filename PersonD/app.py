@@ -13,7 +13,7 @@ import streamlit.components.v1 as components
 # ==========================================================
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")  # FastAPI backend base URL
 ROUTE_EP = f"{BACKEND_URL}/route"
-ANSWER_EP = f"{BACKEND_URL}/answer"
+ANSWER_EP = f"{BACKEND_URL}/ask"
 HEALTH_EP = f"{BACKEND_URL}/health"
 
 st.set_page_config(page_title="EDW Reasoning Assistant", page_icon="🧠", layout="wide")
@@ -143,6 +143,24 @@ if submitted and user_q.strip():
                 st.json(route_res)
 
         answer_res = post_json(ANSWER_EP, {"question": user_q})
+        # Adapt /ask response (evidence + synthesis) to the UI schema
+        if "evidence" in answer_res and "synthesis" in answer_res:
+            syn = answer_res.get("synthesis", {})
+            evidence = answer_res.get("evidence", [])
+            answer_res = {
+                "final_answer": syn.get("answer", "No final answer provided."),
+                # Backend uses string confidence ("High"/"Medium"/"Low"), but the
+                # UI expects a numeric 0–1; we leave it None so it shows "—"
+                "confidence": None,
+                "sub_questions": [],          
+                "evidence": evidence,
+                "findings": syn.get("drivers", []),
+                "timings": {},                
+                "trace": {
+                    "route_type": route_res.get("type") if isinstance(route_res, dict) else None,
+                    "raw": answer_res,
+                },
+            }
     else:
         # Demo mode loads static JSON
         try:
