@@ -1,0 +1,27 @@
+In root (EDW-2)
+
+### TERMINAL 1 – Backend (FastAPI / Uvicorn) ###
+
+source venv/bin/activate
+export $(cat .env | xargs)
+uvicorn PersonA.Backend:app --reload
+
+                ----- Explanation -----
+
+    source venv/bin/activate                    # tells shell to switch into venv instead of system python
+    export $(cat .env | xargs)                  # Load GROQ_API_KEY from .env
+    uvicorn PersonA.Backend:app --reload        # Start backend
+
+************************************************
+
+### TERMINAL 2 – Frontend (Streamlit)
+
+source venv/bin/activate
+export BACKEND_URL="http://127.0.0.1:8000"
+streamlit run PersonD/app.py
+
+                ----- Explanation -----
+
+    source venv/bin/activate                    # tells shell to switch into venv instead of system python
+    export BACKEND_URL="http://127.0.0.1:8000"  # Point Streamlit at the backend
+    streamlit run PersonD/app.py                # Run the UI
