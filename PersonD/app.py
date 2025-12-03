@@ -68,7 +68,7 @@ def show_json_copy_download(label: str, data: Dict[str, Any]):
         data=pretty.encode("utf-8"),
         file_name="trace.json",
         mime="application/json",
-        use_container_width=True
+        width='stretch'
     )
 
     # Simple Copy to Clipboard using HTML
@@ -124,7 +124,7 @@ st.write(
 # User input form
 with st.form("ask"):
     user_q = st.text_input("Your Question:", placeholder="e.g., Why did Q2 revenue drop compared to Q1?")
-    submitted = st.form_submit_button("Run Reasoning", use_container_width=True)
+    submitted = st.form_submit_button("Run Reasoning", width='stretch')
 
 # ==========================================================
 # RUN PIPELINE (BACKEND OR DEMO)
@@ -143,24 +143,59 @@ if submitted and user_q.strip():
                 st.json(route_res)
 
         answer_res = post_json(ANSWER_EP, {"question": user_q})
+        
+        # Planner project 
+        plan = answer_res.get("plan")
+        if plan and "steps" in plan:
+            with st.expander("Plan (LLM-generated)"):
+                for step in plan["steps"]:
+                    st.markdown(
+                        f"**{step['id']}** "
+                        f"(`{step.get('kind','')}` / `{step.get('dimension','-')}`) – "
+                        f"{step.get('description','')}"
+                    )
+
         # Adapt /ask response (evidence + synthesis) to the UI schema
         if "evidence" in answer_res and "synthesis" in answer_res:
             syn = answer_res.get("synthesis", {})
             evidence = answer_res.get("evidence", [])
+
+            # Preserve plan and raw sub-questions from the backend
+            plan = answer_res.get("plan")
+            raw_subqs = answer_res.get("sub_questions", [])
+            
+            # Normalize sub-questions into a list of strings for display
+            ui_subqs = []
+            for sq in raw_subqs:
+                if isinstance(sq, dict):
+                    ui_subqs.append(
+                        sq.get("nlq")
+                        or sq.get("description")
+                        or sq.get("id", "")
+                    )
+                else:
+                    ui_subqs.append(str(sq))
+
+            # Rebuild answer_res in the simplified UI schema,
+            # but keep plan + sub_questions
             answer_res = {
                 "final_answer": syn.get("answer", "No final answer provided."),
                 # Backend uses string confidence ("High"/"Medium"/"Low"), but the
                 # UI expects a numeric 0–1; we leave it None so it shows "—"
                 "confidence": None,
-                "sub_questions": [],          
+                "sub_questions": ui_subqs,
                 "evidence": evidence,
                 "findings": syn.get("drivers", []),
-                "timings": {},                
+                "timings": {},
                 "trace": {
                     "route_type": route_res.get("type") if isinstance(route_res, dict) else None,
                     "raw": answer_res,
                 },
             }
+
+            # keep plan attached so later code (or you) can use it
+            if plan is not None:
+                answer_res["plan"] = plan
     else:
         # Demo mode loads static JSON
         try:
@@ -181,11 +216,42 @@ if submitted and user_q.strip():
     # ----------------------------
     # 3. Extract key fields
     # ----------------------------
-    final_answer = safe_get(answer_res, "final_answer", "No final answer provided.")
-    confidence = safe_get(answer_res, "confidence")
+
+    # Support both old /answer shape and new /ask shape
+    synthesis = answer_res.get("synthesis", {})
+    plan = answer_res.get("plan")
+
+    # Final answer: prefer old key, else fall back to synthesis.answer
+    final_answer = safe_get(
+        answer_res,
+        "final_answer",
+        synthesis.get("answer", "No final answer provided."),
+    )
+
+    # Confidence: prefer top-level, else synthesis.confidence
+    confidence = safe_get(
+        answer_res,
+        "confidence",
+        synthesis.get("confidence"),
+    )
+
+    # Sub-questions: from backend if present, else derive from plan
     sub_questions = safe_get(answer_res, "sub_questions", [])
-    evidence = safe_get(answer_res, "evidence", [])
-    findings = safe_get(answer_res, "findings", [])
+    if (not sub_questions) and isinstance(plan, dict):
+        steps = plan.get("steps", [])
+        sub_questions = [
+            # what to actually show in the UI
+            step.get("nlq") or step.get("description") or f"{step.get('id','')}"
+            for step in steps
+            if step.get("kind") == "query"
+        ]
+
+    # Evidence: prefer top-level, else from synthesis (if you move it there)
+    evidence = safe_get(answer_res, "evidence", synthesis.get("evidence", []))
+
+    # Findings: fallback to drivers if you want to show them in this section
+    findings = safe_get(answer_res, "findings", synthesis.get("drivers", []))
+
     timings = safe_get(answer_res, "timings", {})
     trace = safe_get(answer_res, "trace", answer_res)
 
@@ -219,7 +285,7 @@ if submitted and user_q.strip():
         if evidence:
             try:
                 df = pd.DataFrame(evidence)
-                st.dataframe(df, use_container_width=True, hide_index=True)
+                st.dataframe(df, width='stretch', hide_index=True)
             except Exception:
                 st.json(evidence)
             st.caption("Each evidence item should include an `evidence_id` and source file (mock CSV).")

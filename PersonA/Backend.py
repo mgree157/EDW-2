@@ -1,10 +1,12 @@
 from dotenv import load_dotenv
 load_dotenv()
-
 import re, uuid, os, requests
 from fastapi import FastAPI, APIRouter
 
 from groq import Groq
+
+import json
+from shared.schemas import RouteRequest, Plan, PlanStep, SynthesisRequest
 
 # allow package-style imports from repo root
 import sys, os as _os
@@ -13,14 +15,8 @@ sys.path.append(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
 
 from shared.schemas import (
     RouteRequest, RouteResponse, DecomposeResponse, SubQuestion,
-    SynthesisRequest
+    SynthesisRequest, Plan, PlanStep
 )
-
-# --- LLM planner config (optional, hybrid mode) ---
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-PLANNER_MODEL = "llama-3.3-70b-versatile"
-
-planner_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
 # Import B & C routers
 from PersonB.FetchNormalize import router as data_router
@@ -32,6 +28,73 @@ app = FastAPI(
     redoc_url="/redoc",
     openapi_url="/openapi.json",
 )
+
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+planner_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+PLANNER_MODEL = "llama-3.3-70b-versatile"
+
+@app.post("/plan", response_model=Plan)
+def plan_endpoint(req: RouteRequest) -> Plan:
+    """
+    LLM-based planner: given a question, produce a structured Plan with steps.
+    This sits ABOVE the existing /route/decompose hybrid, which stays as fallback.
+    """
+    if planner_client is None or not GROQ_API_KEY:
+        # No planner model configured -> trivial one-step plan
+        return Plan(
+            question=req.question,
+            steps=[
+                PlanStep(
+                    id="s1",
+                    kind="synthesis",
+                    description="Summarize the available data to answer the question.",
+                    dimension=None,
+                    nlq=None,
+                    depends_on=[],
+                )
+            ],
+        )
+
+    system_prompt = """
+    You are a planning agent for an enterprise BI assistant.
+    You MUST output a JSON object with this exact shape:
+
+    {
+      "question": "<original question>",
+      "steps": [
+        {
+          "id": "Step1",
+          "kind": "query",
+          "description": "short description of this step",
+          "dimension": "time | region | product | orders | null",
+          "nlq": "natural language query for the data layer or null",
+          "depends_on": []
+        }
+      ]
+    }
+
+    Rules:
+    - Use 3–7 steps.
+    - Use kind="query" for data steps, and kind="synthesis" for the final combine/answer step.
+    - dimension must be "time", "region", "product", "orders", or null.
+    - nlq should be how you would phrase the request to EDW/Cortex Analyst.
+    - Focus on explaining *why* metrics changed, not just restating them.
+    """
+
+    user_prompt = f"Create a plan to answer this question:\n{req.question}"
+
+    resp = planner_client.chat.completions.create(
+        model=PLANNER_MODEL,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        response_format={"type": "json_object"},
+        temperature=0.1,
+    )
+
+    plan_json = json.loads(resp.choices[0].message.content)
+    return Plan(**plan_json)
 
 @app.get("/health")
 def health():
@@ -67,39 +130,39 @@ def refine_subquestions_with_llm(
     )
 
     prompt = f"""
-You are a planning agent for a business data reasoning assistant.
-The user has asked the following question:
+    You are a planning agent for a business data reasoning assistant.
+    The user has asked the following question:
 
-USER QUESTION:
-{question}
+    USER QUESTION:
+    {question}
 
-We currently decompose questions into four standard dimensions:
-time, region, product, and orders.
+    We currently decompose questions into four standard dimensions:
+    time, region, product, and orders.
 
-For each dimension, you will produce ONE focused natural language query (nlq)
-that will help answer the user's question, staying consistent with that dimension.
+    For each dimension, you will produce ONE focused natural language query (nlq)
+    that will help answer the user's question, staying consistent with that dimension.
 
-Defaults (for reference):
-{default_blocks}
+    Defaults (for reference):
+    {default_blocks}
 
-Your job:
-- Refine or specialize these queries to match the user's question.
-- Keep exactly these dimensions: time, region, product, orders.
-- Do not invent new dimensions.
-- If the user's question does not clearly relate to one dimension,
-  still produce a reasonable generic query for that dimension.
+    Your job:
+    - Refine or specialize these queries to match the user's question.
+    - Keep exactly these dimensions: time, region, product, orders.
+    - Do not invent new dimensions.
+    - If the user's question does not clearly relate to one dimension,
+    still produce a reasonable generic query for that dimension.
 
-Return ONLY valid JSON in this format:
+    Return ONLY valid JSON in this format:
 
-{{
-  "sub_questions": [
-    {{"dimension": "time", "nlq": "..." }},
-    {{"dimension": "region", "nlq": "..." }},
-    {{"dimension": "product", "nlq": "..." }},
-    {{"dimension": "orders", "nlq": "..." }}
-  ]
-}}
-"""
+    {{
+    "sub_questions": [
+        {{"dimension": "time", "nlq": "..." }},
+        {{"dimension": "region", "nlq": "..." }},
+        {{"dimension": "product", "nlq": "..." }},
+        {{"dimension": "orders", "nlq": "..." }}
+    ]
+    }}
+    """
 
     try:
         res = planner_client.chat.completions.create(
@@ -172,21 +235,68 @@ app.include_router(synth_router)   # C
 def root():
     return {"ok": True, "service": "edw-alpha"}
 
-# ---------- Optional: one-call orchestrator ----------
-ask_router = APIRouter(prefix="/ask", tags=["orchestrator"])
-BASE = os.getenv("SELF_BASE", "http://localhost:8000")
+BASE ="http://localhost:8000"
 
-@ask_router.post("")
+@app.post("/ask")
 def ask(req: RouteRequest):
-    rtype = requests.post(f"{BASE}/route", json=req.dict()).json()["type"]
+    # 1) Route: basic vs reasoning
+    route_res = requests.post(f"{BASE}/route", json=req.dict()).json()
+    rtype = route_res.get("type", "basic")
     if rtype != "reasoning":
-        return {"answer": "Basic path not implemented in alpha."}
-    subqs = requests.post(f"{BASE}/route/decompose", json=req.dict()).json()["sub_questions"]
-    results = requests.post(f"{BASE}/data/fetch", json={"sub_questions": subqs}).json()["results"]
-    evidence = requests.post(f"{BASE}/data/normalize", json={"results": results}).json()["evidence"]
-    out = requests.post(f"{BASE}/synth/stub",
-                        json=SynthesisRequest(question=req.question, evidence=evidence).dict()).json()
-    return {"evidence": evidence, "synthesis": out}
+        return {"answer": "Basic path not implemented in alpha.", "route_type": rtype}
 
-app.include_router(ask_router)
+    # 2) Try planning first
+    try:
+        plan_res = requests.post(f"{BASE}/plan", json=req.dict())
+        plan_res.raise_for_status()
+        plan = plan_res.json()
+    except Exception:
+        plan = None
 
+    subqs = []
+
+    if plan and "steps" in plan:
+        # Use PlanStep(kind="query") as sub-questions
+        for step in plan["steps"]:
+            if step.get("kind") != "query":
+                continue
+            subqs.append(
+                {
+                    "id": step["id"],
+                    "dimension": step.get("dimension"),
+                    "nlq": step.get("nlq") or step.get("description"),
+                }
+            )
+    else:
+        # Fallback to legacy /route/decompose
+        decomp = requests.post(f"{BASE}/route/decompose", json=req.dict()).json()
+        subqs = decomp.get("sub_questions", [])
+        plan = None
+
+    # 3) Fetch & normalize as before
+    fetch_res = requests.post(
+        f"{BASE}/data/fetch",
+        json={"sub_questions": subqs},
+    ).json()
+    results = fetch_res.get("results", [])
+
+    norm_res = requests.post(
+        f"{BASE}/data/normalize",
+        json={"results": results},
+    ).json()
+    evidence = norm_res.get("evidence", [])
+
+    # 4) Synthesize
+    synth_req = SynthesisRequest(question=req.question, evidence=evidence)
+    out = requests.post(
+        f"{BASE}/synth/stub",
+        json=synth_req.dict(),
+    ).json()
+
+    return {
+        "route_type": rtype,
+        "plan": plan,
+        "sub_questions": subqs,
+        "evidence": evidence,
+        "synthesis": out,
+    }

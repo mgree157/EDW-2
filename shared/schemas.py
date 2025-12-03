@@ -16,6 +16,19 @@ class SubQuestion(BaseModel):
 class DecomposeResponse(BaseModel):
     sub_questions: List[SubQuestion]
 
+from typing import Literal
+class PlanStep(BaseModel):
+    id: str
+    kind: Literal["query", "synthesis"]
+    description: str
+    dimension: Optional[str] = None   # "time", "region", "product", "orders", etc.
+    nlq: Optional[str] = None         # natural language query for data steps
+    depends_on: List[str] = []        # ids of steps this depends on
+
+class Plan(BaseModel):
+    question: str
+    steps: List[PlanStep]
+    
 # ---------- B: Data ----------
 class RawResult(BaseModel):
     id: str
